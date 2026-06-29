@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Build artifacts
+build/account_ar/
+dist/
+*.spec.bak
+
+# EasyOCR models (large, downloaded by tools/download_models.py)
+models/
+
+# App output
+screenshot_*.png
+
+# Datasets / real documents — NEVER commit real account data (Phase 5)
+data/
+datasets/
+*.real.*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,13 @@
+# Runtime (Python packages)
+pytesseract>=0.3.10    # Python wrapper around the Tesseract OCR engine
+opencv-python>=4.8.0   # camera capture + drawing
+numpy>=1.24
+Pillow>=10.0.0         # render Hebrew/RTL text on frames + image I/O
+python-bidi>=0.4.2     # correct visual ordering of Hebrew strings
+
+# Build (Windows .exe) — installed by build_exe.bat
+# pyinstaller>=6.3.0
+
+# NOTE: pytesseract needs the Tesseract ENGINE installed separately (not pip):
+#   Windows: https://github.com/UB-Mannheim/tesseract/wiki  (tick "Hebrew" during install)
+#   Linux/WSL: sudo apt install tesseract-ocr tesseract-ocr-heb

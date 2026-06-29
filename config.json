@@ -1,0 +1,43 @@
+{
+  "languages": ["heb", "eng"],
+  "tesseract_cmd": null,
+  "tessdata_dir": null,
+  "tesseract_oem": 3,
+  "tesseract_psm": 6,
+  "ocr_max_width": 2000,
+  "ocr_min_width": 2000,
+  "preprocess": "clahe",
+  "min_ocr_confidence": 0.20,
+
+  "min_digits": 4,
+  "max_digits": 13,
+  "exact_lengths": [],
+
+  "label_keywords": [
+    "מספר חשבון",
+    "מספר חשבון ראשי",
+    "מס חשבון",
+    "מס חשבון ראשי",
+    "מס׳ חשבון",
+    "מס' חשבון",
+    "סניף/חשבון"
+  ],
+  "anchor_tokens": ["חשבון", "חן"],
+  "account_word": "חשבון",
+  "number_words": ["מספר", "מס"],
+  "require_number_word": false,
+  "label_fuzzy_threshold": 0.82,
+  "account_word_threshold": 0.70,
+
+  "line_overlap_ratio": 0.30,
+  "max_horizontal_gap_factor": 9.0,
+  "below_gap_factor": 2.2,
+  "value_side": "left",
+
+  "accept_unlabeled": false,
+  "ascending": true,
+  "track_seconds": 2.5,
+
+  "camera_index": 0,
+  "window_name": "Bank Account AR Detector"
+}

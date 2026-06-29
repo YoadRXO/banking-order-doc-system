@@ -1,0 +1,31 @@
+# ACCEPTED ACCOUNT LABELS
+# =============================================================================
+# Each line below is an account label phrase. A document line is treated as an
+# account line when the DISTINCTIVE word of one of these phrases — the account noun
+# "חשבון" (the longest word) — appears on it. The short "מספר"/"מס" is NOT required,
+# because live-camera OCR often drops it; but "חשבון" is matched strictly, so it will
+# not catch savings ("חסכון") or branch ("סניף"). Then the number AFTER the label on
+# that line — in Hebrew RTL, to its LEFT — is taken; everything else is ignored.
+#
+#   * "מספר חשבון 299868"  -> detected
+#   * "חשבון 299868" (מספר dropped by OCR) -> still detected
+#   * "מספר חשבון ראשי ..." -> detected  ("ראשי" is ignored, the number is taken)
+#   * "מספר סניף 16"        -> ignored   (סניף, not חשבון)
+#   * "מספר חסכון ..."      -> ignored   (חסכון, not חשבון)
+#
+# Note on מס: it means מספר (number), as in "מס חשבון" — never a standalone tax line.
+# Want it stricter (also require the מספר/מס word)? set "require_number_word": true
+# in config.json.
+#
+# How to edit: one phrase per line; '#' lines and blank lines are ignored; Hebrew
+# quotes/geresh/dots are normalized automatically — write it as printed. This file
+# overrides label_keywords in config.json; delete it to fall back to those.
+# =============================================================================
+
+מספר חשבון
+מספר חשבון ראשי
+מס חשבון
+מס חשבון ראשי
+מס׳ חשבון
+מס' חשבון
+סניף/חשבון
