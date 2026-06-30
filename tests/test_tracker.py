@@ -44,6 +44,20 @@ class TestAccountTracker(unittest.TestCase):
         tr.clear()
         self.assertEqual(tr.update([], now=0.1), [])
 
+    def test_confirm_sightings_hides_one_off_misread(self):
+        # SAFETY: with confirm_sightings=2 a number must be read twice before it shows,
+        # so a single rotated/glare misread never reaches the screen.
+        tr = AccountTracker(ttl=3.0, confirm_sightings=2)
+        self.assertEqual(tr.update([_acct("898662")], now=0.0), [])      # first sighting: hidden
+        out = tr.update([_acct("898662")], now=1.0)                       # second: confirmed
+        self.assertEqual([a.digits for a in out], ["898662"])
+
+    def test_confirm_sightings_one_off_then_gone(self):
+        tr = AccountTracker(ttl=2.0, confirm_sightings=2)
+        self.assertEqual(tr.update([_acct("898662")], now=0.0), [])      # seen once, hidden
+        self.assertEqual(tr.update([], now=1.0), [])                      # not re-seen, still hidden
+        self.assertEqual(tr.update([], now=3.0), [])                      # expired, never shown
+
 
 if __name__ == "__main__":
     unittest.main()

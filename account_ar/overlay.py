@@ -92,12 +92,20 @@ class Overlay:
         accounts: List[AccountNumber],
         status: str = "",
         scale: float = 1.0,
+        sharpness: Optional[float] = None,
+        good_sharpness: float = 75.0,
+        min_sharpness: float = 30.0,
     ):
         """Render boxes + ranks for `accounts` onto `frame` in place.
 
         `scale` maps OCR-frame coordinates to the current display frame.
+        When `sharpness` is given, a live focus meter is drawn so the user can see
+        whether the frame is sharp enough to read.
         """
         import cv2
+
+        if sharpness is not None:
+            self._draw_focus(frame, sharpness, good_sharpness, min_sharpness)
 
         for acc in sorted(accounts, key=lambda a: (a.rank or 999)):
             color = _color(acc.rank)
@@ -157,3 +165,25 @@ class Overlay:
 
         h = frame.shape[0]
         cv2.putText(frame, status, (12, h - 14), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2, cv2.LINE_AA)
+
+    def _draw_focus(self, frame, sharpness: float, good: float, minv: float):
+        """Top-left focus meter: a bar that fills toward green as the frame gets sharper.
+
+        Red + 'BLURRY' below the OCR threshold, orange while soft, green when sharp.
+        Gives the user immediate feedback to fix focus/distance instead of guessing.
+        """
+        import cv2
+
+        if sharpness >= good:
+            color, label = (0, 220, 0), "FOCUS OK"
+        elif sharpness >= minv:
+            color, label = (0, 165, 255), "FOCUS: soft - hold steady"
+        else:
+            color, label = (0, 0, 255), "BLURRY - move back / tap to focus"
+
+        x0, y0, bw, bh = 12, 14, 260, 20
+        frac = max(0.05, min(1.0, sharpness / float(good)))
+        cv2.rectangle(frame, (x0, y0), (x0 + bw, y0 + bh), (60, 60, 60), -1)
+        cv2.rectangle(frame, (x0, y0), (x0 + int(bw * frac), y0 + bh), color, -1)
+        cv2.rectangle(frame, (x0, y0), (x0 + bw, y0 + bh), (220, 220, 220), 1)
+        cv2.putText(frame, label, (x0, y0 + bh + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv2.LINE_AA)

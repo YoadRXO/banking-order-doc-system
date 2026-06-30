@@ -6,10 +6,11 @@ from typing import Optional
 
 
 class Camera:
-    def __init__(self, index: int = 0, width: int = 0, height: int = 0):
+    def __init__(self, index: int = 0, width: int = 0, height: int = 0, rotation: int = 0):
         self.index = index
         self.width = width
         self.height = height
+        self.rotation = rotation % 360   # 0/90/180/270 applied to every frame
         self._cap = None
         self._lock = threading.Lock()
         self._frame = None
@@ -45,9 +46,23 @@ class Camera:
                     self._frame = frame
 
     def read(self):
-        """Return the most recent frame (a copy), or None if not ready yet."""
+        """Return the most recent frame (a copy), rotated per `self.rotation`."""
         with self._lock:
-            return None if self._frame is None else self._frame.copy()
+            frame = None if self._frame is None else self._frame.copy()
+        if frame is not None and self.rotation:
+            import cv2
+
+            code = {90: cv2.ROTATE_90_CLOCKWISE,
+                    180: cv2.ROTATE_180,
+                    270: cv2.ROTATE_90_COUNTERCLOCKWISE}.get(self.rotation)
+            if code is not None:
+                frame = cv2.rotate(frame, code)
+        return frame
+
+    def cycle_rotation(self) -> int:
+        """Advance rotation 0->90->180->270->0 and return the new value."""
+        self.rotation = (self.rotation + 90) % 360
+        return self.rotation
 
     def release(self) -> None:
         self._running = False

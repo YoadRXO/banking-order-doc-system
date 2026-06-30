@@ -11,7 +11,7 @@
 
   "min_digits": 4,
   "max_digits": 13,
-  "exact_lengths": [],
+  "exact_lengths": [6],
 
   "label_keywords": [
     "מספר חשבון",
@@ -34,10 +34,21 @@
   "below_gap_factor": 2.2,
   "value_side": "left",
 
-  "accept_unlabeled": false,
+  "accept_unlabeled": true,
   "ascending": true,
-  "track_seconds": 2.5,
+  "track_seconds": 3.0,
+  "confirm_sightings": 2,
+
+  "min_sharpness": 30.0,
+  "good_sharpness": 75.0,
+
+  "roi_enabled": true,
+  "roi_width_frac": 0.70,
+  "roi_height_frac": 0.24,
 
   "camera_index": 0,
+  "camera_width": 1920,
+  "camera_height": 1080,
+  "camera_rotation": 0,
   "window_name": "Bank Account AR Detector"
 }

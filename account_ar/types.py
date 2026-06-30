@@ -69,3 +69,5 @@ class FrameResult:
     frame_size: Tuple[int, int] = (0, 0)  # (width, height) the OCR ran on
     ocr_ms: float = 0.0
     detections: List[Detection] = field(default_factory=list)  # raw OCR, for debug
+    sharpness: float = 0.0                # normalized focus score of the last frame
+    ocr_skipped: bool = False             # True when the frame was too blurry to OCR

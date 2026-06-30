@@ -55,6 +55,15 @@ class Settings:
     preprocess: str = "clahe"             # none|gray|clahe|otsu|adaptive — cleanup before OCR
     min_ocr_confidence: float = 0.20
 
+    # Focus gating (live mode). A blurry/out-of-focus frame has no readable text in it,
+    # so OCRing it just wastes ~1-2s and produces noise. We measure sharpness (variance
+    # of the Laplacian) on each frame, normalized to a fixed width so the threshold is
+    # the same for any camera resolution. Below `min_sharpness` we SKIP OCR and tell the
+    # user to adjust focus/distance; at/above `good_sharpness` the on-screen meter is green.
+    sharpness_norm_width: int = 1000      # resize width before measuring sharpness
+    min_sharpness: float = 30.0           # skip OCR below this (frame too blurry to read)
+    good_sharpness: float = 75.0          # focus meter turns green at/above this
+
     # Account-number shape
     min_digits: int = 4
     max_digits: int = 13
@@ -84,14 +93,29 @@ class Settings:
     # Modes
     accept_unlabeled: bool = False     # accept numbers with no nearby label
     ascending: bool = True             # sort order
-    track_seconds: float = 2.5         # live mode: keep an account on screen this long after
+    track_seconds: float = 3.0         # live mode: keep an account on screen this long after
                                        # its last sighting, so one good frame "sticks" even when
                                        # most frames (glare/blur/angle) are unreadable. 0 = off.
+    confirm_sightings: int = 2         # SAFETY: only show a number after it has been read this
+                                       # many times (same value) within track_seconds. Stops a
+                                       # one-off misread (glare/rotation) from flashing a wrong
+                                       # account. 1 = show immediately (less safe, more "instant").
+
+    # Magnifier target box ("ROI"). Instead of OCRing the whole frame, read only a
+    # central box (drawn on screen) and digitally zoom into it. Lets the user aim the
+    # account-number line into the box from a bit further back, and avoids picking up
+    # other numbers elsewhere on the page. Press 't' to toggle, 'r' is rotation.
+    roi_enabled: bool = True
+    roi_width_frac: float = 0.70       # box width as a fraction of the frame
+    roi_height_frac: float = 0.24      # box height (a horizontal band suits one text line)
 
     # Camera / UI
     camera_index: int = 0
     camera_width: int = 1280              # request a higher-res capture for readable text
     camera_height: int = 720
+    camera_rotation: int = 0              # rotate every frame by 0/90/180/270 deg so the page
+                                          # reads upright (some phone-as-webcam feeds come in
+                                          # flipped). Press 'r' live to cycle until it looks right.
     window_name: str = "Bank Account AR Detector"
 
     @classmethod

@@ -109,7 +109,8 @@ def run_image(settings: Settings, image_path: str, output_path=None,
 def run(settings: Settings, debug: bool = False) -> int:
     import cv2
 
-    camera = Camera(settings.camera_index, settings.camera_width, settings.camera_height)
+    camera = Camera(settings.camera_index, settings.camera_width, settings.camera_height,
+                    settings.camera_rotation)
     try:
         camera.open()
     except RuntimeError as exc:
@@ -122,7 +123,7 @@ def run(settings: Settings, debug: bool = False) -> int:
 
     print("Initializing OCR (Tesseract)...")
     print("Keys:  q/ESC quit | space screenshot | p pause | a accept-unlabeled | "
-          "b preprocess-mode | c clear-memory")
+          "b preprocess-mode | c clear-memory | r rotate-view")
 
     last = time.perf_counter()
     fps = 0.0
@@ -145,13 +146,30 @@ def run(settings: Settings, debug: bool = False) -> int:
 
             if not pipeline.ocr_ready:
                 status = "Loading OCR model..."
+            elif result.ocr_skipped:
+                status = (f"FPS {fps:4.1f} | frame too blurry (sharp {result.sharpness:4.0f}"
+                          f"<{settings.min_sharpness:.0f}) - skipping OCR | "
+                          f"{len(result.accounts)} acct held")
             else:
                 status = (f"FPS {fps:4.1f} | OCR {result.ocr_ms:5.0f}ms | "
-                          f"{len(result.accounts)} acct | prep={settings.preprocess} | "
-                          f"unlabeled={'ON' if settings.accept_unlabeled else 'off'}")
+                          f"sharp {result.sharpness:4.0f} | {len(result.accounts)} acct | "
+                          f"rot {camera.rotation} | prep={settings.preprocess}")
 
             raw = frame.copy()  # clean frame (no overlay) for screenshots / OCR debug
-            overlay.draw(frame, result.accounts, status=status, scale=scale)
+            if settings.roi_enabled:  # magnifier target box — aim the number inside it
+                h, w = frame.shape[:2]
+                rw, rh = int(w * settings.roi_width_frac), int(h * settings.roi_height_frac)
+                rx, ry = (w - rw) // 2, (h - rh) // 2
+                cv2.rectangle(frame, (rx, ry), (rx + rw, ry + rh), (0, 255, 255), 2)
+                cv2.putText(frame, "aim the account number inside this box", (rx + 6, ry - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 2, cv2.LINE_AA)
+            overlay.draw(frame, result.accounts, status=status, scale=scale,
+                         sharpness=result.sharpness,
+                         good_sharpness=settings.good_sharpness,
+                         min_sharpness=settings.min_sharpness)
+            cv2.putText(frame, "keys: r=rotate  t=zoom-box on/off  c=clear  space=save  q=quit",
+                        (12, frame.shape[0] - 38), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                        (255, 255, 255), 1, cv2.LINE_AA)
             cv2.imshow(settings.window_name, frame)
 
             key = cv2.waitKey(1) & 0xFF
@@ -171,6 +189,14 @@ def run(settings: Settings, debug: bool = False) -> int:
             elif key == ord("c"):
                 pipeline.clear_tracked()
                 print("[ui] cleared remembered accounts")
+            elif key == ord("r"):
+                deg = camera.cycle_rotation()
+                pipeline.clear_tracked()  # old reads were in the previous orientation
+                print(f"[ui] view rotation = {deg} deg")
+            elif key == ord("t"):
+                settings.roi_enabled = not settings.roi_enabled
+                pipeline.clear_tracked()
+                print(f"[ui] zoom-box = {'ON' if settings.roi_enabled else 'off'}")
             elif key == ord(" "):
                 ts = int(time.time())
                 cv2.imwrite(os.path.abspath(f"screenshot_{ts}.png"), frame)
