@@ -23,25 +23,66 @@ class AccountTracker:
     account on screen for `ttl` seconds, refreshing each time it is re-seen.
     """
 
-    def __init__(self, ttl: float, confirm_sightings: int = 1):
+    def __init__(self, ttl: float, confirm_sightings: int = 1, lock: bool = False):
         self.ttl = ttl
         self.confirm_sightings = max(1, confirm_sightings)
-        # digits -> (latest detection, last_seen_time, times_seen_in_window)
-        self._seen: Dict[str, Tuple[AccountNumber, float, int]] = {}
+        # lock=True: once an instance is confirmed it is "locked" — frozen at its found
+        # position and never expired, so found numbers ACCUMULATE while the user pans to
+        # find more (instead of refreshing away). clear() resets for the next batch.
+        self.lock = lock
+        # Two separate jobs, kept apart so neither breaks the other:
+        #  * confirmation is by VALUE (robust to box jitter between frames) — a number is
+        #    trusted once its digits have been read >= confirm_sightings times.
+        #  * display is by INSTANCE (position) — the same number on two papers shows as
+        #    two boxes; frame-to-frame jitter of one paper is matched by proximity.
+        self._values: Dict[str, dict] = {}     # digits -> {"count", "last"}
+        self._instances: List[dict] = []        # [{"acc", "last", "locked"}]
+
+    def _nearest_instance(self, acc: AccountNumber):
+        best, best_d = None, None
+        cx, cy = acc.detection.center
+        tol = 1.5 * max(acc.detection.width, acc.detection.height, 1.0)
+        for it in self._instances:
+            if it["acc"].digits != acc.digits:
+                continue
+            ix, iy = it["acc"].detection.center
+            d = ((cx - ix) ** 2 + (cy - iy) ** 2) ** 0.5
+            if d <= tol and (best_d is None or d < best_d):
+                best, best_d = it, d
+        return best
 
     def update(self, accounts: List[AccountNumber], now: Optional[float] = None) -> List[AccountNumber]:
         now = time.time() if now is None else now
         for acc in accounts:
-            prev = self._seen.get(acc.digits)
-            count = (prev[2] + 1) if prev else 1
-            self._seen[acc.digits] = (acc, now, count)  # newest detection (freshest box) wins
-        self._seen = {d: v for d, v in self._seen.items() if now - v[1] <= self.ttl}
-        # SAFETY: only surface a number once it has been read >= confirm_sightings times,
-        # so a single rotated/glare misread never reaches the screen.
-        return [a for (a, _, c) in self._seen.values() if c >= self.confirm_sightings]
+            v = self._values.get(acc.digits)
+            self._values[acc.digits] = {"count": (v["count"] + 1 if v else 1), "last": now}
+            match = self._nearest_instance(acc)
+            if match is not None:
+                if not match.get("locked"):   # a locked box stays frozen where it was found
+                    match["acc"] = acc        # newest detection (freshest box) wins
+                match["last"] = now
+            else:
+                self._instances.append({"acc": acc, "last": now, "locked": False})
+        confirmed = {d for d, v in self._values.items() if v["count"] >= self.confirm_sightings}
+        # In lock mode a confirmed instance becomes permanent (frozen, never expires).
+        if self.lock:
+            for it in self._instances:
+                if it["acc"].digits in confirmed:
+                    it["locked"] = True
+        # Expire: locked instances persist; everything else drops after ttl.
+        self._values = {d: v for d, v in self._values.items()
+                        if now - v["last"] <= self.ttl
+                        or (self.lock and v["count"] >= self.confirm_sightings)}
+        self._instances = [it for it in self._instances
+                           if it.get("locked") or now - it["last"] <= self.ttl]
+        # SAFETY: only surface instances whose VALUE was read >= confirm_sightings times
+        # (or that are already locked) — a single rotated/glare misread never shows.
+        return [it["acc"] for it in self._instances
+                if it.get("locked") or it["acc"].digits in confirmed]
 
     def clear(self) -> None:
-        self._seen.clear()
+        self._values.clear()
+        self._instances.clear()
 
 
 class ARPipeline:
@@ -50,7 +91,8 @@ class ARPipeline:
         self.camera = camera
         self.ocr = OcrEngine(settings)
         self._result = FrameResult()
-        self._tracker = AccountTracker(settings.track_seconds, settings.confirm_sightings)
+        self._tracker = AccountTracker(settings.track_seconds, settings.confirm_sightings,
+                                       settings.lock_found)
         self._lock = threading.Lock()
         self._running = False
         self._paused = False
@@ -153,6 +195,11 @@ class ARPipeline:
     def clear_tracked(self) -> None:
         """Forget remembered accounts (e.g. after moving to a different document)."""
         self._tracker.clear()
+
+    def toggle_lock(self) -> bool:
+        """Toggle lock/accumulate mode: found numbers freeze in place instead of expiring."""
+        self._tracker.lock = not self._tracker.lock
+        return self._tracker.lock
 
     def get_result(self) -> FrameResult:
         with self._lock:

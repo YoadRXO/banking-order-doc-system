@@ -100,6 +100,9 @@ class Settings:
                                        # many times (same value) within track_seconds. Stops a
                                        # one-off misread (glare/rotation) from flashing a wrong
                                        # account. 1 = show immediately (less safe, more "instant").
+    lock_found: bool = False           # accumulate mode: freeze each found number in place and
+                                       # never expire it, so they pile up as you pan across papers
+                                       # (instead of refreshing away). Toggle with 'l'; 'c' clears.
 
     # Magnifier target box ("ROI"). Instead of OCRing the whole frame, read only a
     # central box (drawn on screen) and digitally zoom into it. Lets the user aim the

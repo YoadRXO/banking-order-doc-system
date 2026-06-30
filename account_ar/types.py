@@ -45,6 +45,22 @@ class Detection:
         x1, y1, x2, y2 = self.bbox
         return ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
 
+    def overlaps(self, other: "Detection", frac: float = 0.3) -> bool:
+        """True if this box overlaps `other` by >= `frac` of the smaller box's area.
+
+        Used to tell whether two same-value reads are the *same* physical number
+        (overlapping) or two different papers showing the same number (disjoint).
+        """
+        ax1, ay1, ax2, ay2 = self.bbox
+        bx1, by1, bx2, by2 = other.bbox
+        ix = max(0.0, min(ax2, bx2) - max(ax1, bx1))
+        iy = max(0.0, min(ay2, by2) - max(ay1, by1))
+        inter = ix * iy
+        if inter <= 0:
+            return False
+        smaller = min((ax2 - ax1) * (ay2 - ay1), (bx2 - bx1) * (by2 - by1))
+        return inter >= frac * max(1.0, smaller)
+
 
 @dataclass
 class AccountNumber:

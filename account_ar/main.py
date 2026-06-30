@@ -123,10 +123,11 @@ def run(settings: Settings, debug: bool = False) -> int:
 
     print("Initializing OCR (Tesseract)...")
     print("Keys:  q/ESC quit | space screenshot | p pause | a accept-unlabeled | "
-          "b preprocess-mode | c clear-memory | r rotate-view")
+          "b preprocess-mode | c clear-memory | r rotate-view | t zoom-box | l lock/accumulate")
 
     last = time.perf_counter()
     fps = 0.0
+    lock_on = settings.lock_found
     try:
         while True:
             frame = camera.read()
@@ -167,9 +168,12 @@ def run(settings: Settings, debug: bool = False) -> int:
                          sharpness=result.sharpness,
                          good_sharpness=settings.good_sharpness,
                          min_sharpness=settings.min_sharpness)
-            cv2.putText(frame, "keys: r=rotate  t=zoom-box on/off  c=clear  space=save  q=quit",
+            cv2.putText(frame, "keys: r=rotate  t=zoom-box  l=lock/accumulate  c=clear  q=quit",
                         (12, frame.shape[0] - 38), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                         (255, 255, 255), 1, cv2.LINE_AA)
+            if lock_on:
+                cv2.putText(frame, "LOCK", (frame.shape[1] - 90, frame.shape[0] - 14),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 215, 255), 2, cv2.LINE_AA)
             cv2.imshow(settings.window_name, frame)
 
             key = cv2.waitKey(1) & 0xFF
@@ -197,6 +201,9 @@ def run(settings: Settings, debug: bool = False) -> int:
                 settings.roi_enabled = not settings.roi_enabled
                 pipeline.clear_tracked()
                 print(f"[ui] zoom-box = {'ON' if settings.roi_enabled else 'off'}")
+            elif key == ord("l"):
+                lock_on = pipeline.toggle_lock()
+                print(f"[ui] lock/accumulate = {'ON' if lock_on else 'off'}")
             elif key == ord(" "):
                 ts = int(time.time())
                 cv2.imwrite(os.path.abspath(f"screenshot_{ts}.png"), frame)

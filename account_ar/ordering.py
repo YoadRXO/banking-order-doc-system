@@ -12,8 +12,14 @@ from .types import AccountNumber
 
 
 def rank_accounts(accounts: List[AccountNumber], settings: Settings) -> List[AccountNumber]:
-    """Sort by numeric value and assign 1-based ranks. Mutates and returns the list."""
-    ordered = sorted(accounts, key=lambda a: a.value, reverse=not settings.ascending)
-    for index, account in enumerate(ordered, start=1):
-        account.rank = index
-    return ordered
+    """Assign 1-based ranks by numeric value, sharing a rank across equal values.
+
+    Ranking by *unique value* means two papers showing the same account number get
+    the same rank (and so the same overlay colour) — letting the user group files into
+    stacks by colour. Returns the accounts sorted by rank. Mutates `rank` in place.
+    """
+    unique_values = sorted({a.value for a in accounts}, reverse=not settings.ascending)
+    rank_of = {value: index for index, value in enumerate(unique_values, start=1)}
+    for account in accounts:
+        account.rank = rank_of[account.value]
+    return sorted(accounts, key=lambda a: (a.rank, a.detection.center))

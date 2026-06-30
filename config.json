@@ -38,6 +38,7 @@
   "ascending": true,
   "track_seconds": 3.0,
   "confirm_sightings": 2,
+  "lock_found": false,
 
   "min_sharpness": 30.0,
   "good_sharpness": 75.0,

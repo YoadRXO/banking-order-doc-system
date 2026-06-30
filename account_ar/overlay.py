@@ -142,7 +142,14 @@ class Overlay:
 
         h, w = frame.shape[:2]
         ranked = sorted([a for a in accounts if a.rank], key=lambda a: a.rank)
-        lines = ["ORDER (asc):"] + [f"{a.rank}. {a.digits}" for a in ranked]
+        # Collapse duplicates to one panel line with a count, but keep their boxes.
+        counts: dict = {}
+        for a in ranked:
+            key = (a.rank, a.digits)
+            counts[key] = counts.get(key, 0) + 1
+        lines = ["ORDER (asc):"]
+        for (rank, digits), n in sorted(counts.items()):
+            lines.append(f"{rank}. {digits}" + (f"  x{n}" if n > 1 else ""))
         if not ranked:
             lines = ["ORDER (asc):", "(no accounts detected)"]
 

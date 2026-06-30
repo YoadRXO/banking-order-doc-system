@@ -116,10 +116,17 @@ def associate_accounts(detections: List[Detection], settings: Settings) -> List[
 
 
 def _dedupe(accounts: List[AccountNumber]) -> List[AccountNumber]:
-    """Keep one entry per digit string — the most confident one."""
-    best: dict = {}
-    for acc in accounts:
-        cur = best.get(acc.digits)
-        if cur is None or acc.confidence > cur.confidence:
-            best[acc.digits] = acc
-    return list(best.values())
+    """Collapse only *co-located* reads of the same number, keeping the most confident.
+
+    Two reads of the same digits that overlap in the frame are the same physical
+    number (e.g. OCR re-read one spot) → merged. The same digits found at a *different*
+    location (a second piece of paper showing the same account number) is kept as a
+    separate instance, so duplicates can be shown side-by-side.
+    """
+    kept: List[AccountNumber] = []
+    for acc in sorted(accounts, key=lambda a: a.confidence, reverse=True):
+        if any(k.digits == acc.digits and k.detection.overlaps(acc.detection, 0.4)
+               for k in kept):
+            continue
+        kept.append(acc)
+    return kept
