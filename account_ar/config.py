@@ -104,11 +104,23 @@ class Settings:
                                        # never expire it, so they pile up as you pan across papers
                                        # (instead of refreshing away). Toggle with 'l'; 'c' clears.
 
-    # Magnifier target box ("ROI"). Instead of OCRing the whole frame, read only a
-    # central box (drawn on screen) and digitally zoom into it. Lets the user aim the
-    # account-number line into the box from a bit further back, and avoids picking up
-    # other numbers elsewhere on the page. Press 't' to toggle, 'r' is rotation.
-    roi_enabled: bool = True
+    # Multi-document stacking order. Show two (or more) separate papers at once and the
+    # app tells you which one to put on TOP of the stack (first in order = top). Toggle
+    # with 's' (also turns the zoom-box off so both papers fit in view).
+    stack_order_enabled: bool = False
+    stack_gap_factor: float = 3.0      # how big a gap (× account-box size) splits two documents;
+                                       # bigger = merges numbers that are further apart into one doc
+    detect_pages: bool = True          # in stacking mode, find the paper rectangles (OpenCV) so each
+                                       # number is tied to its page, pages are outlined, and an arrow
+                                       # points at the one to put on top
+    page_min_area_frac: float = 0.02   # ignore bright blobs smaller than this fraction of the frame
+    page_max_area_frac: float = 0.95   # ignore the whole-frame/background blob
+
+    # Magnifier target box ("ROI"). Optional central zoom band that OCRs only the middle
+    # of the frame. OFF by default: the app now reads the whole frame and detects each
+    # page, so it can see several documents at once (auto-zoom would hide the other pages).
+    # Still available via the 't' key for single-number close-ups.
+    roi_enabled: bool = False
     roi_width_frac: float = 0.70       # box width as a fraction of the frame
     roi_height_frac: float = 0.24      # box height (a horizontal band suits one text line)
 

@@ -43,7 +43,19 @@ python -m account_ar.main --camera 1  # pick a different webcam
 
 **Keys:** `q`/`ESC` quit · `space` screenshot · `p` pause OCR · `a` toggle
 accept-unlabeled-numbers · `b` cycle preprocessing (`clahe`→`none`→`gray`→`otsu`→`adaptive`)
-· `c` clear remembered accounts.
+· `c` clear remembered accounts · `s` toggle stacking order (which paper goes on top).
+
+### Which paper goes on top (multi-document stacking order)
+
+Show **two (or more) separate papers at once** and the app tells you the order to
+**physically stack** them: the document whose account number is first in the order goes
+on **top**. Press `s` (or run with `--stack`). The app reads the **whole frame** (the
+auto-zoom is off by default now), **detects each page** (sheet of paper) and outlines it,
+ties each account number to its page, tags the top paper green **"#1 TOP OF STACK"**,
+**points a big green arrow at it** (“TAKE THIS FIRST”), and prints a plain line like
+*"Put 29200 on top, then 29201 under it."* Note the **number** decides the order, not
+whether a paper is on the left or right. Lay the sheets on a darker surface with a small
+gap between them so each page is detected cleanly.
 
 ### Tips for low-quality / webcam capture
 

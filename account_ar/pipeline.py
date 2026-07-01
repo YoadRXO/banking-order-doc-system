@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Tuple
 
 from .config import Settings
 from .detector import associate_accounts
+from .grouping import group_documents
 from .ocr_engine import OcrEngine
 from .ordering import rank_accounts
 from .types import AccountNumber, FrameResult
@@ -162,10 +163,13 @@ class ARPipeline:
                 if sharpness < self.settings.min_sharpness:
                     tracked = (self._tracker.update([]) if self.settings.track_seconds > 0
                                else [])
+                    ranked = rank_accounts(tracked, self.settings)
+                    pages = self._detect_pages(region, rx, ry)
                     with self._lock:
                         self._result = FrameResult(
-                            accounts=rank_accounts(tracked, self.settings), frame_size=size,
-                            ocr_ms=0.0, detections=[], sharpness=sharpness, ocr_skipped=True)
+                            accounts=ranked, frame_size=size, ocr_ms=0.0, detections=[],
+                            sharpness=sharpness, ocr_skipped=True,
+                            groups=self._grouped(ranked, pages))
                     time.sleep(0.01)
                     continue
 
@@ -176,13 +180,36 @@ class ARPipeline:
                 if self.settings.track_seconds > 0:
                     accounts = self._tracker.update(accounts)
                 ranked = rank_accounts(accounts, self.settings)
+                pages = self._detect_pages(region, rx, ry)
                 with self._lock:
                     self._result = FrameResult(accounts=ranked, frame_size=size,
                                                ocr_ms=ocr_ms, detections=detections,
-                                               sharpness=sharpness, ocr_skipped=False)
+                                               sharpness=sharpness, ocr_skipped=False,
+                                               groups=self._grouped(ranked, pages))
             except Exception as exc:  # keep the worker alive on transient errors
                 print(f"[pipeline] OCR error: {exc}")
                 time.sleep(0.1)
+
+    def _detect_pages(self, region, rx: int, ry: int):
+        """Detect paper rectangles in `region`, mapped back onto the full frame.
+
+        Only runs in stacking mode with page detection on; returns [] otherwise (so the
+        grouping falls back to number-only clustering).
+        """
+        if not (self.settings.stack_order_enabled and self.settings.detect_pages):
+            return []
+        from .page_detect import detect_pages
+
+        pages = detect_pages(region, self.settings)
+        if rx or ry:  # shift ROI-local page boxes onto the full frame
+            pages = [[(x + rx, y + ry) for (x, y) in quad] for quad in pages]
+        return pages
+
+    def _grouped(self, ranked: List[AccountNumber], pages=None):
+        """Stacking order for the current accounts (multi-document mode), else []."""
+        if not self.settings.stack_order_enabled:
+            return []
+        return group_documents(ranked, self.settings, pages=pages)
 
     @property
     def ocr_ready(self) -> bool:

@@ -5,7 +5,8 @@ from __future__ import annotations
 
 from typing import List, Optional, Tuple
 
-from .types import AccountNumber
+from .grouping import stack_instruction
+from .types import AccountNumber, DocumentGroup
 
 # Rank colours (BGR) cycled for the boxes/tags.
 _PALETTE = [
@@ -95,12 +96,15 @@ class Overlay:
         sharpness: Optional[float] = None,
         good_sharpness: float = 75.0,
         min_sharpness: float = 30.0,
+        groups: Optional[List[DocumentGroup]] = None,
     ):
         """Render boxes + ranks for `accounts` onto `frame` in place.
 
         `scale` maps OCR-frame coordinates to the current display frame.
         When `sharpness` is given, a live focus meter is drawn so the user can see
         whether the frame is sharp enough to read.
+        When `groups` is given (multi-document mode), each document is tagged with its
+        stacking position and a "which paper goes on top" panel is drawn.
         """
         import cv2
 
@@ -123,7 +127,14 @@ class Overlay:
             tag = f"#{acc.rank}  {acc.digits}" if acc.rank else acc.digits
             self._draw_tag(frame, tag, (x1, y1 - 30), color)
 
-        self._draw_panel(frame, accounts)
+        # Multi-document mode: tag each document with its stacking position and show a
+        # "which paper goes on top" panel instead of the plain ORDER list.
+        if groups:
+            self._draw_stack(frame, groups, scale)
+            self._draw_direction(frame, groups, scale)
+            self._draw_stack_panel(frame, groups)
+        else:
+            self._draw_panel(frame, accounts)
         if status:
             self._draw_status(frame, status)
         return frame
@@ -166,6 +177,90 @@ class Overlay:
             color = (255, 255, 255) if i == 0 else _color(i)
             cv2.putText(frame, line, (x0 + 12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv2.LINE_AA)
             y += 24
+
+    def _draw_stack(self, frame, groups: List[DocumentGroup], scale: float):
+        """Outline each page, tag its account with the stacking position; #1 = TOP (green)."""
+        import cv2
+        import numpy as np
+
+        for doc in groups:
+            pos = doc.stack_position or 0
+            top = pos == 1
+            color = (0, 220, 0) if top else (0, 165, 255)  # top = green, rest = orange
+
+            # Outline the detected page (if any) so the user sees which sheet is which.
+            if doc.page_quad:
+                page = np.array([(int(x * scale), int(y * scale)) for (x, y) in doc.page_quad],
+                                dtype="int32")
+                cv2.polylines(frame, [page], isClosed=True, color=color,
+                              thickness=6 if top else 3)
+
+            pts = [(int(x * scale), int(y * scale)) for (x, y) in doc.primary.detection.polygon]
+            poly = np.array(pts, dtype="int32")
+            cv2.polylines(frame, [poly], isClosed=True, color=color, thickness=4)
+            x1 = min(p[0] for p in pts)
+            y2 = max(p[1] for p in pts)
+            label = f"#{pos} TOP OF STACK  {doc.digits}" if top else f"#{pos}  {doc.digits}"
+            self._draw_tag(frame, label, (x1, y2 + 34), color)  # below the box
+
+    def _draw_direction(self, frame, groups: List[DocumentGroup], scale: float):
+        """Point a bold arrow at the first (top-of-stack) document, and draw faint
+        arrows through the rest so the pick-up order 1 -> 2 -> 3 is obvious."""
+        import cv2
+
+        ordered = sorted([g for g in groups if g.stack_position],
+                         key=lambda d: d.stack_position)
+        if not ordered:
+            return
+        h, w = frame.shape[:2]
+        centers = [(int(d.center[0] * scale), int(d.center[1] * scale)) for d in ordered]
+
+        # Faint chain showing the order through the stack.
+        for a, b in zip(centers, centers[1:]):
+            cv2.arrowedLine(frame, a, b, (0, 200, 255), 2, cv2.LINE_AA, 0, 0.06)
+
+        # Bold arrow into the first page: from just above its top edge, pointing down.
+        first = ordered[0]
+        fx = centers[0][0]
+        x1, y1, x2, y2 = [int(v * scale) for v in first.region]
+        if y1 > 100:                       # room above -> point down onto the page
+            head, tail = (fx, y1), (fx, max(20, y1 - 80))
+        else:                              # page near the top -> point up from below
+            head, tail = (fx, min(h - 1, y2)), (fx, min(h - 1, y2 + 80))
+        cv2.arrowedLine(frame, tail, head, (0, 220, 0), 6, cv2.LINE_AA, 0, 0.35)
+        self._draw_tag(frame, "TAKE THIS FIRST (TOP)", (fx - 40, tail[1] - 4), (0, 220, 0))
+
+    def _draw_stack_panel(self, frame, groups: List[DocumentGroup]):
+        """Left-side panel: the stack top→bottom plus a plain instruction line."""
+        import cv2
+
+        ordered = sorted(groups, key=lambda d: d.stack_position or 0)
+        lines = ["STACK (top -> bottom):"]
+        if len(ordered) < 2:
+            lines.append("show 2+ documents")
+        else:
+            for doc in ordered:
+                suffix = "  <- put on TOP" if doc.stack_position == 1 else ""
+                lines.append(f"{doc.stack_position}. {doc.digits}{suffix}")
+
+        panel_w = 300
+        panel_h = 24 * len(lines) + 16
+        x0, y0 = 12, 70  # below the focus meter (top-left)
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (x0, y0), (x0 + panel_w, y0 + panel_h), (30, 30, 30), -1)
+        cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
+
+        y = y0 + 26
+        for i, line in enumerate(lines):
+            color = (255, 255, 255) if i == 0 else ((0, 220, 0) if i == 1 and len(ordered) >= 2
+                                                    else (0, 165, 255))
+            cv2.putText(frame, line, (x0 + 12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv2.LINE_AA)
+            y += 24
+
+        instr = stack_instruction(groups)
+        if instr:
+            cv2.putText(frame, instr, (x0, y0 + panel_h + 26), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6, (0, 255, 255), 2, cv2.LINE_AA)
 
     def _draw_status(self, frame, status: str):
         import cv2

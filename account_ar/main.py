@@ -5,6 +5,7 @@ Keys:
   space    save a screenshot of the current view
   p        pause / resume OCR processing
   a        toggle "accept unlabeled numbers" mode
+  s        toggle multi-document stacking order (which paper goes on top)
 """
 from __future__ import annotations
 
@@ -24,6 +25,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--config", type=str, default=None, help="path to config.json")
     p.add_argument("--accept-unlabeled", action="store_true",
                    help="accept numbers even without a nearby Hebrew label")
+    p.add_argument("--stack", action="store_true",
+                   help="multi-document mode: show which paper goes on top of the stack")
     p.add_argument("--image", type=str, default=None,
                    help="process a single image file instead of the webcam")
     p.add_argument("--output", type=str, default=None,
@@ -48,6 +51,7 @@ def run_image(settings: Settings, image_path: str, output_path=None,
     import cv2
 
     from .detector import associate_accounts
+    from .grouping import group_documents, stack_instruction
     from .ocr_engine import OcrEngine
     from .ordering import rank_accounts
     from .overlay import Overlay
@@ -88,9 +92,27 @@ def run_image(settings: Settings, image_path: str, output_path=None,
     if not accounts:
         print("  (none — try --accept-unlabeled, or check the image / config.json keywords)")
 
+    pages = []
+    if settings.stack_order_enabled:
+        if settings.detect_pages:
+            from .page_detect import detect_pages
+            pages = detect_pages(frame, settings)
+            print(f"Detected {len(pages)} page(s) in the image.")
+        groups = group_documents(accounts, settings, pages=pages)
+    else:
+        groups = []
+    if groups:
+        print(f"\nStacking order — {len(groups)} document(s), top of the stack first:")
+        for doc in sorted(groups, key=lambda d: d.stack_position or 0):
+            top = "  <- put on TOP" if doc.stack_position == 1 else ""
+            print(f"  #{doc.stack_position}  {doc.digits}{top}")
+        instr = stack_instruction(groups)
+        if instr:
+            print(f"  → {instr}")
+
     overlay = Overlay()
     scale = frame.shape[1] / float(size[0]) if size[0] else 1.0
-    overlay.draw(frame, accounts, status=f"{len(accounts)} account(s)", scale=scale)
+    overlay.draw(frame, accounts, status=f"{len(accounts)} account(s)", scale=scale, groups=groups)
 
     out = output_path or _annotated_path(image_path)
     cv2.imwrite(out, frame)
@@ -123,7 +145,8 @@ def run(settings: Settings, debug: bool = False) -> int:
 
     print("Initializing OCR (Tesseract)...")
     print("Keys:  q/ESC quit | space screenshot | p pause | a accept-unlabeled | "
-          "b preprocess-mode | c clear-memory | r rotate-view | t zoom-box | l lock/accumulate")
+          "b preprocess-mode | c clear-memory | r rotate-view | t zoom-box | l lock/accumulate | "
+          "s stacking-order")
 
     last = time.perf_counter()
     fps = 0.0
@@ -167,8 +190,9 @@ def run(settings: Settings, debug: bool = False) -> int:
             overlay.draw(frame, result.accounts, status=status, scale=scale,
                          sharpness=result.sharpness,
                          good_sharpness=settings.good_sharpness,
-                         min_sharpness=settings.min_sharpness)
-            cv2.putText(frame, "keys: r=rotate  t=zoom-box  l=lock/accumulate  c=clear  q=quit",
+                         min_sharpness=settings.min_sharpness,
+                         groups=result.groups)
+            cv2.putText(frame, "keys: r=rotate  t=zoom-box  l=lock  s=stacking-order  c=clear  q=quit",
                         (12, frame.shape[0] - 38), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                         (255, 255, 255), 1, cv2.LINE_AA)
             if lock_on:
@@ -204,6 +228,14 @@ def run(settings: Settings, debug: bool = False) -> int:
             elif key == ord("l"):
                 lock_on = pipeline.toggle_lock()
                 print(f"[ui] lock/accumulate = {'ON' if lock_on else 'off'}")
+            elif key == ord("s"):
+                settings.stack_order_enabled = not settings.stack_order_enabled
+                if settings.stack_order_enabled:
+                    settings.roi_enabled = False        # need the whole frame, not the zoom box
+                    if hasattr(settings, "scan_mode"):
+                        settings.scan_mode = False      # read the whole frame so all pages show
+                pipeline.clear_tracked()
+                print(f"[ui] stacking mode = {'ON (whole frame; show 2+ papers)' if settings.stack_order_enabled else 'off'}")
             elif key == ord(" "):
                 ts = int(time.time())
                 cv2.imwrite(os.path.abspath(f"screenshot_{ts}.png"), frame)
@@ -228,6 +260,11 @@ def main(argv=None) -> int:
         settings.camera_index = args.camera
     if args.accept_unlabeled:
         settings.accept_unlabeled = True
+    if args.stack:
+        settings.stack_order_enabled = True
+        settings.roi_enabled = False
+        if hasattr(settings, "scan_mode"):
+            settings.scan_mode = False   # whole-frame read so every page is visible
     if args.preprocess is not None:
         settings.preprocess = args.preprocess
     if args.image:
