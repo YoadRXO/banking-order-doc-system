@@ -9,6 +9,10 @@ each one on the live camera feed, and labels them with the **correct sort order*
 > Example: page contains `291039`, `292039`, `290134`.
 > Correct order shown on screen → **1) 290134, 2) 291039, 3) 292039**.
 
+> **Multi-document mode:** show *two (or more) separate papers at once* and the app also
+> tells you **which paper to put on top of the stack** — the document whose number is first
+> in the order goes on top. See §5.
+
 ---
 
 ## 1. What "AR" means here
@@ -99,7 +103,58 @@ length even without a nearby label — useful for messy scans, more false positi
 
 ---
 
-## 5. Phased delivery
+## 5. Multi-document stacking order — which paper goes on top
+
+**Use case:** The user shows **two (or more) separate printed documents at once** — for
+example two account letters laid side by side under the camera. Each document has its own
+bank account number. The app must tell the user **the order to physically stack the papers**:
+the document whose number comes **first in the sort order goes on TOP of the stack**, the next
+one under it, and so on.
+
+**Worked example (from the request):**
+
+> Right document shows `29200`, left document shows `29201`.
+> Ascending order → `29200` is **#1**.
+> On screen: the **right** document is tagged **"① TOP OF STACK"**, the **left** is tagged **"②"**.
+> Instruction line: **"Put 29200 on top, then 29201 under it."**
+
+Note that the **position on the table (right vs left) does NOT decide the order** — the
+**account number** does. In this example the smaller number happens to be on the right, so the
+app tells the user to pick up the *right* paper first and place it on top.
+
+**How it works (v1 — reuses the existing pipeline):**
+
+1. OCR + detect account numbers on the frame exactly as today.
+2. **Group detections into documents.** Split the accepted numbers into spatial clusters — in
+   the common two-paper case this is simply *left group vs right group* (a large horizontal gap
+   between them), or by detecting each paper's rectangular edge with OpenCV. Each cluster = one
+   physical document, and it takes the account number found inside it.
+3. **Order the documents** by their representative account number using the existing
+   `ordering.py` (ascending by default; the `ascending` toggle flips which end is "top").
+4. **Show the stacking instruction:**
+   - Tag each document region on the live frame with its stack position: **"① TOP"**, "②", "③"…
+   - Show a side panel listing the stack **top → bottom**, e.g. `TOP → 29200 → 29201 → bottom`.
+   - Show one plain-language line: *"Put 29200 on top, then 29201 under it."*
+
+**Edge cases to handle:**
+
+- **More than two documents** — same logic, N clusters, ranks `1..N`, first = top.
+- **A document with several numbers** — use the account-labeled number as that document's number.
+- **Only one document visible** — fall back to today's single-page behavior (no stack message).
+- **Ambiguous / overlapping papers** — if the clusters can't be separated confidently, show a
+  hint ("separate the documents / leave a gap") instead of guessing a wrong order.
+- **Ascending vs descending** — the `ascending` config flag decides which number ends up on top.
+
+**New/changed code (small):**
+
+- `detector.py` (or a new `grouping.py`): cluster accepted numbers into per-document groups.
+- `overlay.py`: draw the per-document "① TOP" tag + the top→bottom stack panel + instruction line.
+- `config.json`: e.g. `"stack_order_enabled": true`, `"stack_gap_factor"` (how big a gap splits documents).
+- Tests: a case with two groups (right `29200` / left `29201`) → expect **top = 29200**.
+
+---
+
+## 6. Phased delivery
 
 ### Phase 0 — Scaffolding ✅ (this commit)
 - Repo layout, `requirements.txt`, config, `.gitignore`, README, PLAN.
@@ -125,6 +180,22 @@ length even without a nearby label — useful for messy scans, more false positi
   de-skew (`cv2.getPerspectiveTransform`), temporal smoothing of boxes across frames.
 - Confidence thresholds + reject obvious non-accounts (dates, phone, amounts).
 
+### Phase 4.5 — Multi-document stacking order (which paper goes on top) ✅
+- **Auto-zoom (ROI) removed** as the default (`roi_enabled=false`) so the whole frame is
+  read and several pages are visible at once; still available on the `t` key.
+- `page_detect.py`: OpenCV finds each **page** (bright paper rectangle on a darker desk);
+  `grouping.py` ties every account number to the page it sits on (numbers on no detected
+  page fall back to single-linkage clustering by text-height gap). Degrades gracefully to
+  number-only clustering when no page is found.
+- `overlay.py`: outlines each page, tags the top one green **"#1 TOP OF STACK"** (orange for
+  the rest), a top→bottom stack panel, a plain instruction line, and a **bold green arrow
+  ("TAKE THIS FIRST") pointing at the top page** plus a faint 1→2→3 order chain.
+- Toggle with `s` live or `--stack` in image mode. Config: `stack_order_enabled`,
+  `stack_gap_factor`, `detect_pages`, `page_min_area_frac`, `page_max_area_frac`.
+- Tested in `tests/test_grouping.py` (incl. right-`29200`/left-`29201` + page assignment) and
+  `tests/test_page_detect.py` (OpenCV, skipped if absent).
+- See §5.
+
 ### Phase 5 — Train on real banking documents (your stretch goal)
 - **Data:** collect & photograph real forms (varied lighting/angles/banks).
 - **Annotate:** label the *account-number field* boxes (and label keywords) with
@@ -145,7 +216,7 @@ length even without a nearby label — useful for messy scans, more false positi
 
 ---
 
-## 6. Project layout
+## 7. Project layout
 
 ```
 banking-order-doc-system/
@@ -177,7 +248,7 @@ banking-order-doc-system/
 
 ---
 
-## 7. Risks & mitigations
+## 8. Risks & mitigations
 
 | Risk | Mitigation |
 |------|-----------|
@@ -187,10 +258,11 @@ banking-order-doc-system/
 | Numbers that aren't accounts (dates, sums) | Require Hebrew label nearby; length filter; Phase 4 rejection rules |
 | Hebrew can't render via OpenCV | Pillow + `python-bidi` (`overlay.py`) |
 | Camera differs per machine | `--camera N` flag, list/select devices |
+| Multiple documents grouped wrongly | Cluster by clear gaps / paper edges; if ambiguous, ask the user to separate the papers instead of guessing (§5) |
 
 ---
 
-## 8. How to run / build (summary)
+## 9. How to run / build (summary)
 
 ```bash
 # dev (any OS with a webcam)

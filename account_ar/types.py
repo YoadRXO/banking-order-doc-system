@@ -78,6 +78,59 @@ class AccountNumber:
 
 
 @dataclass
+class DocumentGroup:
+    """One physical document — a spatial cluster of account detections — plus its
+    place in the physical stacking order.
+
+    Used by the multi-document feature: show two (or more) separate papers at once,
+    each with its own account number, and the app tells you which paper to put on top.
+    `stack_position` is 1-based; **1 = TOP of the stack**.
+    """
+
+    accounts: List[AccountNumber]
+    stack_position: Optional[int] = None
+    page_quad: Optional[List[Point]] = None  # the detected paper rectangle, if a page was found
+
+    @property
+    def primary(self) -> AccountNumber:
+        """The account that represents this document for ordering.
+
+        Prefer a label-anchored read (a real "…חשבון" match) over a bare number, then
+        the most confident — so a stray digit run doesn't outrank the real account.
+        """
+        return sorted(self.accounts, key=lambda a: (a.label_text is None, -a.confidence))[0]
+
+    @property
+    def digits(self) -> str:
+        return self.primary.digits
+
+    @property
+    def value(self) -> int:
+        return self.primary.value
+
+    @property
+    def bbox(self) -> Tuple[float, float, float, float]:
+        """Axis-aligned box enclosing every detection in the document."""
+        boxes = [a.detection.bbox for a in self.accounts]
+        return (min(b[0] for b in boxes), min(b[1] for b in boxes),
+                max(b[2] for b in boxes), max(b[3] for b in boxes))
+
+    @property
+    def region(self) -> Tuple[float, float, float, float]:
+        """The box to outline/aim at: the detected page if known, else the numbers' box."""
+        if self.page_quad:
+            xs = [p[0] for p in self.page_quad]
+            ys = [p[1] for p in self.page_quad]
+            return (min(xs), min(ys), max(xs), max(ys))
+        return self.bbox
+
+    @property
+    def center(self) -> Point:
+        x1, y1, x2, y2 = self.region
+        return ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
+
+
+@dataclass
 class FrameResult:
     """Everything the UI needs to draw one processed frame's worth of results."""
 
@@ -87,3 +140,4 @@ class FrameResult:
     detections: List[Detection] = field(default_factory=list)  # raw OCR, for debug
     sharpness: float = 0.0                # normalized focus score of the last frame
     ocr_skipped: bool = False             # True when the frame was too blurry to OCR
+    groups: List[DocumentGroup] = field(default_factory=list)  # stacking order (multi-doc mode)

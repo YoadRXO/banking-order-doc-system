@@ -40,10 +40,16 @@
   "confirm_sightings": 2,
   "lock_found": false,
 
+  "stack_order_enabled": false,
+  "stack_gap_factor": 3.0,
+  "detect_pages": true,
+  "page_min_area_frac": 0.02,
+  "page_max_area_frac": 0.95,
+
   "min_sharpness": 30.0,
   "good_sharpness": 75.0,
 
-  "roi_enabled": true,
+  "roi_enabled": false,
   "roi_width_frac": 0.70,
   "roi_height_frac": 0.24,
 
